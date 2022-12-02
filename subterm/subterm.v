@@ -2,10 +2,10 @@ From MetaCoq.PCUIC Require Import PCUICAst PCUICAstUtils PCUICLiftSubst.
 From MetaCoq.PCUIC Require TemplateToPCUIC PCUICToTemplate.
 
 From MetaCoq.Template Require Import config monad_utils utils TemplateMonad Universes.
-From MetaCoq.Template Require Ast.
+From MetaCoq.Template Require Ast bytestring.
 Import MCMonadNotation.
 
-Require Import List String Relation_Operators.
+Require Import List Relation_Operators.
 Import ListNotations.
 
 From Local Require Import non_uniform.
@@ -24,11 +24,11 @@ Definition subterms_for_constructor
            (ref   : term) (* we need the term for exactly this inductive just for the substition *)
            (ntypes : nat) (* number of types in the mutual inductive *)
            (npars : nat) (* number of parameters in the type *)
-           (nind : nat) (* number of proper indeces in the type *)
+           (nind : nat) (* number of proper indices in the type *)
            (ct    : term) (* type of the constructor *)
            (ncons : nat) (* index of the constructor in the inductive *)
            (nargs : nat) (* number of arguments in this constructor *)
-                  : list (nat * term * nat)
+                  : list (nat * (context * list term * term) * nat)
   := let indrel := (ntypes - inductive_ind refi - 1) in
     let '(ctx, ap) := decompose_prod_assum [] ct in
     (*    ^ now ctx is a reversed list of assumptions and definitions *)
@@ -60,17 +60,24 @@ Definition subterms_for_constructor
           (args' : list term) =>
           let len' := List.length ctx' in
           let ctxl' := (map (clift0 (2 + i)) ctx') in
-          it_mkProd_or_LetIn
-             (ctxl' ++ ctx_sbst)
-             (mkApps (tRel (len + len'))
-                   ((map (lift0 (len' + len - npars))
-                         (to_extended_list params)) ++
-                    (map (lift (1 + i + len') len') (List.skipn npars args')) ++
-                    (map (lift0 len') inds) ++
-                    [mkApps (tRel (i + len'))
+          let newargs := ctxl' ++ ctx_sbst in
+          let newinds := 
+            (map (lift (1 + i + len') len') (List.skipn npars args')) ++
+            (map (lift0 len') inds) ++
+            [mkApps (tRel (i + len'))
                           (to_extended_list ctxl');
                      mkApps (tConstruct refi ncons [])
-                         (map (lift0 len') (to_extended_list ctx_sbst))])) in
+                         (map (lift0 len') (to_extended_list ctx_sbst))]
+          in
+          let newcty :=
+            it_mkProd_or_LetIn
+              newargs
+              (mkApps (tRel (len + len'))
+                    ((map (lift0 (len' + len - npars))
+                          (to_extended_list params)) ++
+                      newinds))
+          in (newargs, newinds, newcty)
+      in
     mapi (fun i '(n, c, a) => (i, construct_cons n c a, len + List.length c)) d.
 
 Definition nAnon := mkBindAnn nAnon Relevant.
@@ -83,7 +90,8 @@ Definition subterm_for_ind
            (ind   : one_inductive_body)
                   : one_inductive_body
   := let (pai, _) := decompose_prod_assum [] ind.(ind_type) in
-    let sort := (tSort (Universe.of_levels (inl PropLevel.lProp))) in
+    let sortU := (Universe.of_levels (inl PropLevel.lProp)) in
+    let sort := (tSort sortU) in
     let npars := getParamCount ind allparams in
     let pars := List.skipn (List.length pai - npars) pai in
     let inds := List.firstn (List.length pai - npars) pai in
@@ -94,21 +102,35 @@ Definition subterm_for_ind
     let aptype2 :=
         mkApps ref ((map (lift0 (1 + 2 * ninds)) (to_extended_list pars)) ++
                     (map (lift0 1) (to_extended_list inds))) in
-    let renamer name i := (name ++ "_subterm" ++ (string_of_nat i))%string in
-    {| ind_name := (ind.(ind_name) ++ "_direct_subterm")%string;
+    let new_inds := [mkdecl nAnon None aptype2; mkdecl nAnon None aptype1] ++ (map (clift0 (ninds)) inds) ++ inds in
+    let renamer name i := (name ++ "_subterm" ++ (string_of_nat i))%bs in
+    {| ind_name := (ind.(ind_name) ++ "_direct_subterm")%bs;
+       ind_indices := new_inds ;
+       ind_sort := sortU ;
        ind_type  := it_mkProd_or_LetIn
                       pars
-                   (it_mkProd_or_LetIn
+                    (it_mkProd_or_LetIn 
+                      new_inds
+                      sort) ;
+                   (* (it_mkProd_or_LetIn
                       (inds)
                    (it_mkProd_or_LetIn
                       (map (clift0 (ninds)) inds)
                    (it_mkProd_or_LetIn
                        [mkdecl nAnon None aptype2; mkdecl nAnon None aptype1]
-                       sort)));
+                       sort))); *)
        ind_kelim := IntoPropSProp;
        ind_ctors :=List.concat
-                     (mapi (fun n '(id', ct, k) => (
-                       map (fun '(si, st, sk) => (renamer id' si, st, sk))
+                     (mapi (fun n '({| cstr_name := id' ; cstr_type := ct ; cstr_arity := k |}) => 
+                     (
+                       map (fun '(si, (sargs, sinds, st), sk) => 
+                        {|
+                          cstr_name := renamer id' si ;
+                          cstr_args := sargs ;
+                          cstr_indices := sinds ;
+                          cstr_type := st ;
+                          cstr_arity := sk
+                        |})
                        (subterms_for_constructor refi ref ntypes npars ninds ct n k)))
                        ind.(ind_ctors));
       ind_projs := [];
@@ -132,16 +154,17 @@ Definition direct_subterm_for_mutual_ind
         ind_variance := None
       |}.
 
-Definition subterm (t : Ast.term)
+Definition subterm (t : Ast.Env.program)
   : TemplateMonad unit
-  := match t with
+  := match t.2 with
     | Ast.tInd ind0 _ =>
       decl <- tmQuoteInductive (inductive_mind ind0);;
       tmPrint decl;;
+      let genv := TemplateToPCUIC.trans_global_env t.1 in
       match (subterm.direct_subterm_for_mutual_ind
-               (TemplateToPCUIC.trans_minductive_body decl)
+               (TemplateToPCUIC.trans_minductive_body genv decl)
                ind0
-               (TemplateToPCUIC.trans t)) with
+               (TemplateToPCUIC.trans genv t.2)) with
       | None =>
         tmPrint t;;
         @tmFail unit "Coulnd't construct a subterm"

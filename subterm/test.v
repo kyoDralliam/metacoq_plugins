@@ -7,13 +7,13 @@ Import MCMonadNotation.
 Require Import String List.
 Import ListNotations.
 
-Require Import Equations.Equations.
+From Equations Require Import Equations.
 
 Definition inductive_printer (tm : Ast.term)
   : TemplateMonad unit
   :=  match tm with
      | Ast.tInd ind0 _ =>
-       d <- tmQuoteInductive (BasicAst.inductive_mind ind0);;
+       d <- tmQuoteInductive (Kernames.inductive_mind ind0);;
        tmPrint d
      | _ => tmFail "sorry"
      end.
@@ -26,15 +26,19 @@ End Test.
 
 From MetaCoq.Template Require Import All.
 
+Notation "<# x #>" := (ltac:(let p y := exact y in run_template_program (tmQuoteRec x) p))
+  (only parsing).
+
 MetaCoq Run (inductive_printer <%test%>).
 
 MetaCoq Run (inductive_printer <%list%>).
-MetaCoq Run (subterm <%list%>).
+MetaCoq Run (subterm <#list#>).
 
 
 From Equations Require Import Equations.
 
 (* Derive Subterm for list. *)
+Derive Signature for list_direct_subterm.
 
 Definition list_subterm := 
   fun A : Type => Relation_Operators.clos_trans (list A) (list_direct_subterm A).
@@ -48,18 +52,18 @@ Inductive vector (A : Type) : nat -> Type :=
 | vnil : vector A 0
 | vcons n : A -> vector A n -> vector A (S n).
 
-Derive NoConfusionHom for vector.
+Derive Signature NoConfusionHom for vector.
 (* Derive Subterm for vector. *)
 
-MetaCoq Run (subterm <%vector%>).
+MetaCoq Run (subterm <#vector#>).
 
 Require Import sigma.
 
 (* From MetaCoq.Template Require Import All. *)
 
-Unset Strict Unquote Universe Mode.
+Unset MetaCoq Strict Unquote Universe Mode.
 
-MetaCoq Run (tmBind (pack_inductive <% vector %>) (tmMkDefinition "vector_packed")).
+MetaCoq Run (tmBind (pack_inductive <# vector #>) (tmMkDefinition "vector_packed")).
 Print vector_packed.
 
 Definition vector_subterm :=
@@ -67,6 +71,8 @@ Definition vector_subterm :=
     Relation_Operators.clos_trans (vector_packed A)
                               (fun x y : (vector_packed A) =>
                                  vector_direct_subterm A (pr1 x) (pr1 y) (pr2 x) (pr2 y)).
+
+Derive Signature for vector_direct_subterm.
 
 Lemma well_founded_vector_subterm : forall A : Type, WellFounded (vector_subterm A).
 Proof.
@@ -78,19 +84,19 @@ Inductive fin (A : Type) : nat -> Type :=
 | fin0 : forall n, fin A n
 | finS : forall n, fin A n -> fin A (S n).
 
-MetaCoq Run (pack_inductive <%fin%> >>= tmMkDefinition "fin_packed").
+MetaCoq Run (pack_inductive <#fin#> >>= tmMkDefinition "fin_packed").
 Print fin_packed.
 
-MetaCoq Run (subterm <% fin %>).
+MetaCoq Run (subterm <# fin #>).
 Print fin_direct_subterm.
-
+Derive Signature for fin_direct_subterm.
 
 Definition fin_subterm := fun A =>
   Relation_Operators.clos_trans (fin_packed A)
                                 (fun x y : (fin_packed A) =>
                                    fin_direct_subterm A (pr1 x) (pr1 y) (pr2 x) (pr2 y)).
 
-Derive NoConfusionHom for fin.
+Derive Signature NoConfusionHom for fin.
 
 Lemma well_founded_fin_subterm : forall A : Type, WellFounded (fin_subterm A).
 Proof.
@@ -154,7 +160,7 @@ with odd : nat -> Prop :=
 
 MetaCoq Run (inductive_printer <%even%>).
 
-MetaCoq Run (subterm <%odd%>).
+MetaCoq Run (subterm <#odd#>).
 Print odd_direct_subterm.
 
 
@@ -168,7 +174,7 @@ Inductive finn A : list(A) -> nat -> Type :=
 
 MetaCoq Run (inductive_printer <%finn%>).
 
-MetaCoq Run (subterm <%finn%>).
+MetaCoq Run (subterm <#finn#>).
 (*Derive Subterm for finn.*)
 MetaCoq Run (inductive_printer <%finn_direct_subterm%>).
 Print finn_direct_subterm.
@@ -183,7 +189,7 @@ Inductive scope_le : scope -> scope -> Set :=
 | scope_le_map : forall {n m}, scope_le n m -> scope_le (S n) (S m)
 .
 
-MetaCoq Run (subterm <%scope_le%>).
+MetaCoq Run (subterm <#scope_le#>).
 
 Print scope_le_direct_subterm.
 (*
@@ -201,4 +207,4 @@ Inductive nnat (A : Type) : Type :=
   n_zero : nnat A
 | n_one : (nat -> nnat (list A)) -> nnat A.
 
-Fail MetaCoq Run (subterm <%nnat%>).
+Fail MetaCoq Run (subterm <#nnat#>).

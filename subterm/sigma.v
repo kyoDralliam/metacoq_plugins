@@ -65,13 +65,13 @@ Definition sigma_pack_inductive
           sigma_pack_go (List.length inds - 1) inds (fun l => mkApps (tInd i []) (map tRel (rev (seq (List.length inds) (ind_npars m))) ++ l)) []))
   end.
 
-Definition pack_inductive (t : Ast.term) : TemplateMonad (Ast.term) :=
-    match t with
+Definition pack_inductive (t : Ast.Env.program) : TemplateMonad (Ast.term) :=
+    match t.2 with
     | Ast.tInd ind0 _ =>
       decl <- tmQuoteInductive (inductive_mind ind0);;
       match (sigma_pack_inductive
                ind0
-               (TemplateToPCUIC.trans_minductive_body decl)) with
+               (TemplateToPCUIC.trans_minductive_body (TemplateToPCUIC.trans_global_env t.1) decl)) with
       | None =>
         tmPrint t;;
         @tmFail (Ast.term) "Coulnd't pack inductive"

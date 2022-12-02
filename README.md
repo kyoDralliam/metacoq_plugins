@@ -1,16 +1,22 @@
 # MetaCoq plugins for nested inductive types
 
+This repository contains a partial update of
+https://github.com/uds-psl/metacoq_plugins
+to coq 8.16 and metacoq version 1.1.1
+
+The originality of the work is to be credited to the authors of the
+linked repository above.
+
+For now, only the `subterm` repository is expected to work
+
+
+
 ## Installation
 
 ```sh
 opam repo add coq-released https://coq.inria.fr/opam/released
 
-METACOQ_VERSION=7281139
-opam pin add -n -y -k git coq-metacoq-template.dev "https://github.com/MetaCoq/metacoq.git#$METACOQ_VERSION"
-opam pin add -n -y -k git coq-metacoq-pcuic.dev "https://github.com/MetaCoq/metacoq.git#$METACOQ_VERSION"
-opam pin add -n -y -k git coq-metacoq-translations.dev "https://github.com/MetaCoq/metacoq.git#$METACOQ_VERSION"
-
-opam install .
+opam install coq-metacoq-pcuic.1.1.1+8.16 coq-metacoq-pcuic
 ```
 
 ## Development setup
@@ -18,17 +24,11 @@ opam install .
 ```sh
 opam repo add coq-released https://coq.inria.fr/opam/released
 
-METACOQ_VERSION=7281139
-opam pin add -n -y -k git coq-metacoq-template.dev "https://github.com/MetaCoq/metacoq.git#$METACOQ_VERSION"
-opam pin add -n -y -k git coq-metacoq-pcuic.dev "https://github.com/MetaCoq/metacoq.git#$METACOQ_VERSION"
-opam pin add -n -y -k git coq-metacoq-translations.dev "https://github.com/MetaCoq/metacoq.git#$METACOQ_VERSION"
-
-opam install . --deps-only
+opam install coq-metacoq-pcuic.1.1.1+8.16 coq-metacoq-pcuic
 ```
 
 To compile a subproject with name `SUBPROJECT` use `make -C SUBPROJECT`. E.g. use `make -C parametricity` to compile the parametricity plugin.
 
-To install a subproject with name `SUBPROJECT` use `make -C SUBPROJECT install`. E.g. use `make -C parametricity install` to install the parametricity plugin.
 
 Some subprojects may depend on others, for instance the nested induction plugin depends on the parametricity plugin.
 This means one needs to run `make -C parametricity && make -C parametricity install` before running `make -C nested-induction`.
@@ -36,7 +36,15 @@ This means one needs to run `make -C parametricity && make -C parametricity inst
 <!-- ## Nested Induction Principles -->
 
 
-<!-- ## Subterm Relations -->
+## Subterm Relations
+
+Subterm relation generation can be seen in action in `subterm/test.v`.
+The main entry point function `subterm` takes a template-coq program for an inductive (as obtained with `<# myInductive #>`)
+and generates a new inductive `myInductive_direct_subterm` describing the direct subterms of the inductive in the signature of its constructors.
+
+Current limitations:
+- Does not work with non-uniform parameters, with nested-inductive types.
+- Does not deal with occurences of mutual inductive types.
 
 
 <!-- ## Pickle/Unpickle -->
